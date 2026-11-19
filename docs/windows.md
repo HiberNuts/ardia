@@ -950,7 +950,9 @@ session with track actions, and the mini player shows skip by 15 seconds where t
 
 Answered in TypeScript on Windows since this list was made: `engine.info` (from `host.info`), `favicons.fetch` (the
 icon Chromium stored for that address, from `ac_favicons_get`, asked again after 0.4 and 1.5 s while Chromium writes
-it), and `profiles.deleteData`.
+it), and `profiles.deleteData`. The page call `downloadFavicon` (a page's favicon event) asks the same `favicons.fetch`
+with the page's profile (`engine/pageFavicon.ts`), so a tab shows its site's icon as soon as Chromium stores it rather
+than a letter tile until the next lookup by page address.
 
 Answered on Windows since the engine took Windows paths (`windows-engine-20261112-2`), in `domains/exports.ts`,
 `unpacked.ts` and `systemState.ts`, with the dialogs, file reads and power reading passed in as the domain engine's

@@ -1,12 +1,13 @@
 import { createElement, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useRef, type ComponentType } from "react";
 import { View, type LayoutChangeEvent, type NativeMethods, type NativeSyntheticEvent } from "react-native";
-import type { NativeProps, PageEvent, WebViewHandle } from "@ardia/ardiacore";
+import type { DomainModule, NativeProps, PageEvent, WebViewHandle } from "@ardia/ardiacore";
 import type { AppWindowsModule } from "../nativeModuleTypes";
 import { followMotion } from "../animation/motion";
 import { fieldFocusedIn } from "../appKeyboard";
 import { noteMissing } from "../missing";
 import { requireNativeModule } from "../modules";
 import { coversIn, hiddenByFullScreen, holesFor, onCoversChange, pageRadiusIn, setFullScreenPage } from "./covers";
+import { downloadFavicon } from "./pageFavicon";
 import { callPage, mountPage, showPage, type PageRect, type PageShape } from "./pages";
 import { noteShowStep } from "./showTrace";
 import { CoverAncestry } from "./usePageCover";
@@ -81,6 +82,8 @@ function capturePicture(windowId: string, shown: { current: Shown }, scale: numb
   return Promise.race([capture, late]);
 }
 
+
+const faviconsDomain = () => requireNativeModule<Pick<DomainModule, "call">>("ArdiaFavicons");
 
 const setWindowFullScreen = (windowId: string, on: boolean) =>
   Promise.resolve(appWindows().setPageFullScreen(windowId, on)).then(
@@ -188,6 +191,7 @@ export const EngineWebView = forwardRef<unknown, Props>(function EngineWebView(p
           get(_target, method) {
             if (typeof method !== "string" || method === "then" || method === "$$typeof") return undefined;
             if (method === "capturePicture") return (scale: number) => capturePicture(windowId, shown, scale);
+            if (method === "downloadFavicon") return (url: string) => downloadFavicon(faviconsDomain(), latest.current.profile ?? "", url);
             if (method === "focusIfUnfocused") return async () => !fieldFocusedIn(windowId) && (await callPage(key, "focus", { follow: true })) !== null;
             const names = ARGUMENTS[method];
             if (names) {
