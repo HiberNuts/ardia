@@ -6,7 +6,8 @@ import { engineProfile } from "../browser/model";
 import type { HistoryEntry } from "../browser/types";
 import { isWebPageUrl } from "../../lib/url";
 import { HISTORY, historyValue, recordId, type HistoryValue } from "./records";
-import { withSyncWorkCounts } from "../telemetry/workCounts";
+import { consentToken } from "../telemetry/client";
+import { noteSyncHistoryTitleKept, withSyncWorkCounts } from "../telemetry/workCounts";
 import { historyExtractsOf } from "./historyExtracts";
 
 const store = () => useBrowser.getState();
@@ -142,6 +143,7 @@ export function historyAdapter(profileId: string): Adapter {
       }
       if (!updates.size) return;
       const engine = engineProfile(useBrowser.getState(), profileId);
+      const consent = consentToken();
       await Promise.all([addHistoryVisits(engine, add, SAME_VISIT_MS), deleteHistoryUrls(engine, remove)]);
       useBrowser.setState((s) => {
         const current = new Map(historyOf(s, profileId).map((e) => [e.url, e]));
@@ -151,7 +153,8 @@ export function historyAdapter(profileId: string): Adapter {
           else if (!now) current.set(url, update);
           else {
             const times = [...new Set([...(now.visitTimes ?? []), ...(update.visitTimes ?? [])])].sort((a, z) => a - z).slice(-MAX_VISIT_TIMES);
-            current.set(url, { ...update, visits: Math.max(now.visits, update.visits), lastVisit: times[times.length - 1]!, visitTimes: times });
+            if (now.title && now.title !== update.title) noteSyncHistoryTitleKept(consent);
+            current.set(url, { ...update, title: now.title || update.title, visits: Math.max(now.visits, update.visits), lastVisit: times[times.length - 1]!, visitTimes: times });
           }
         }
         const list = [...current.values()].sort((a, z) => z.lastVisit - a.lastVisit).slice(0, MAX_HISTORY);
