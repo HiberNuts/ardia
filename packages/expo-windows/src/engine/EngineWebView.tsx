@@ -4,9 +4,9 @@ import type { DomainModule, NativeProps, PageEvent, WebViewHandle } from "@ardia
 import type { AppWindowsModule } from "../nativeModuleTypes";
 import { followMotion } from "../animation/motion";
 import { fieldFocusedIn } from "../appKeyboard";
-import { noteMissing } from "../missing";
 import { requireNativeModule } from "../modules";
 import { coversIn, hiddenByFullScreen, holesFor, onCoversChange, pageRadiusIn, setFullScreenPage } from "./covers";
+import { enginePageCalls, NOT_ON_WINDOWS_YET, type EnginePageView } from "./pageCalls";
 import { downloadFavicon } from "./pageFavicon";
 import { callPage, mountPage, showPage, type PageRect, type PageShape } from "./pages";
 import { noteShowStep } from "./showTrace";
@@ -18,48 +18,6 @@ type PageEventsOnWindows = { onPageEvent?: (event: Pick<NativeSyntheticEvent<Pag
 type Props = Pick<NativeProps, "url" | "profile" | "adoptId" | "tabId" | "visible" | "style"> & Partial<Pick<NativeProps, "temporary">> & Partial<Pick<NativeProps, "pageEvents">> & PageEventsOnWindows;
 
 
-const ARGUMENTS: Record<string, string[]> = {
-  loadUrl: ["url", "userInitiated"],
-  goBack: [],
-  goForward: [],
-  goToOffset: ["offset"],
-  reload: [],
-  forceReload: [],
-  stopLoading: [],
-  focus: [],
-  setMuted: ["muted"],
-  find: ["text", "forward", "findNext"],
-  stopFinding: ["clear"],
-  zoomStep: ["direction"],
-  executeJavaScript: ["code"],
-  evaluate: ["code"],
-  navigationEntries: [],
-  showDevTools: ["panel"],
-  print: [],
-  runPageCommand: ["name"],
-  getSecurityInfo: [],
-  mediaCommand: ["action", "seconds"],
-  clearSiteData: [],
-  pageCookies: ["urls"],
-  openBlockedPopup: ["id", "always"],
-  discard: ["unload"],
-  sleepIfHidden: ["seconds"],
-  setFrozen: ["frozen"],
-  resolveUnresponsive: ["terminate"],
-};
-const UNWRAPPED: Record<string, (reply: Record<string, unknown> | null) => unknown> = {
-  evaluate: (reply) => reply?.result ?? null,
-  navigationEntries: (reply) => reply?.entries ?? [],
-  pageCookies: (reply) => reply?.cookies ?? [],
-  discard: (reply) => reply?.outcome ?? "refused",
-  sleepIfHidden: (reply) => (Array.isArray(reply?.keptBy) ? reply.keptBy : [-1]),
-  getSecurityInfo: (reply) => (!reply || reply.info === null ? null : reply),
-  clearSiteData: (reply) => reply ?? { cookies: false, storage: false },
-};
-const ANSWERS: Record<string, unknown> = {
-  requestPictureInPicture: false,
-  takeControlPress: false,
-};
 const SETTLE_MS = [0, 50, 200, 500];
 const PICTURE_DEADLINE_MS = 1000;
 
@@ -93,7 +51,7 @@ const setWindowFullScreen = (windowId: string, on: boolean) =>
 
 let unnamed = 0;
 
-export const EngineWebView = forwardRef<unknown, Props>(function EngineWebView(props, ref) {
+export const EngineWebView = forwardRef<EnginePageView, Props>(function EngineWebView(props, ref) {
   const windowId = useContext(WindowIdContext);
   const above = useRef(useContext(CoverAncestry));
   above.current = useContext(CoverAncestry);
@@ -184,30 +142,14 @@ export const EngineWebView = forwardRef<unknown, Props>(function EngineWebView(p
 
   useImperativeHandle(
     ref,
-    () =>
-      new Proxy(
-        {},
-        {
-          get(_target, method) {
-            if (typeof method !== "string" || method === "then" || method === "$$typeof") return undefined;
-            if (method === "capturePicture") return (scale: number) => capturePicture(windowId, shown, scale);
-            if (method === "downloadFavicon") return (url: string) => downloadFavicon(faviconsDomain(), latest.current.profile ?? "", url);
-            if (method === "focusIfUnfocused") return async () => !fieldFocusedIn(windowId) && (await callPage(key, "focus", { follow: true })) !== null;
-            const names = ARGUMENTS[method];
-            if (names) {
-              const unwrap = UNWRAPPED[method];
-              return async (...values: unknown[]) => {
-                const reply = await callPage<Record<string, unknown>>(key, method, Object.fromEntries(names.map((name, index) => [name, values[index] ?? null])));
-                return unwrap ? unwrap(reply) : undefined;
-              };
-            }
-            return async () => {
-              noteMissing(`<ArdiaWebView>.${method}`);
-              return Object.hasOwn(ANSWERS, method) ? ANSWERS[method] : null;
-            };
-          },
-        },
-      ),
+    (): EnginePageView => ({
+      ...enginePageCalls(callPage, key),
+      ...NOT_ON_WINDOWS_YET,
+      nativeTag: null,
+      capturePicture: (scale) => capturePicture(windowId, shown, scale),
+      downloadFavicon: (url) => downloadFavicon(faviconsDomain(), latest.current.profile ?? "", url),
+      focusIfUnfocused: async () => !fieldFocusedIn(windowId) && (await callPage(key, "focus", { follow: true })) !== null,
+    }),
     [key, windowId],
   );
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { notePageFavicon, takePageFaviconCounts } from "./pageFaviconCounts.ts";
+import { notePageFavicon, notePageFaviconFailed, takePageFaviconCounts } from "./pageFaviconCounts.ts";
 
 test("each favicon a page announces is counted, and those that came back with no image are counted again as empty", () => {
   takePageFaviconCounts();
@@ -9,4 +9,19 @@ test("each favicon a page announces is counted, and those that came back with no
   assert.equal(notePageFavicon(null), null);
   assert.deepEqual(takePageFaviconCounts(), { page_favicon_downloads: 3, page_favicon_downloads_empty: 2 });
   assert.deepEqual(takePageFaviconCounts(), { page_favicon_downloads: 0, page_favicon_downloads_empty: 0 });
+});
+
+test("a download that failed counts as one that came back empty, and its error is logged", () => {
+  takePageFaviconCounts();
+  const warned = [];
+  const warn = console.warn;
+  console.warn = (...args) => void warned.push(args);
+  try {
+    assert.equal(notePageFaviconFailed(new Error("no engine")), null);
+  } finally {
+    console.warn = warn;
+  }
+  assert.deepEqual(takePageFaviconCounts(), { page_favicon_downloads: 1, page_favicon_downloads_empty: 1 });
+  assert.equal(warned.length, 1);
+  assert.equal(warned[0][0], "[favicons] page download failed");
 });

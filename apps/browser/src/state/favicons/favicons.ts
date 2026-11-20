@@ -13,7 +13,7 @@ import { changedPages, pagesWrittenSince, withPages, type PagesPair } from "./pa
 import { onProfilesOpened, profileOpened } from "../profiles/profileLoading";
 import { consentToken } from "../telemetry/client";
 import { warnFor } from "../telemetry/logs";
-import { notePageFavicon } from "../telemetry/pageFaviconCounts";
+import { notePageFavicon, notePageFaviconFailed } from "../telemetry/pageFaviconCounts";
 import { fetchFailedBefore, forgetAsked, markAsked, noteFetchFailed, unmarkAsked } from "./askedFavicons";
 
 type Icons = {
@@ -144,7 +144,7 @@ export function noteFavicon(tabId: string, src: string) {
   let pending = inflight.get(id);
   if (!pending) {
     const consent = consentToken();
-    pending = handle.downloadFavicon(src).then((image) => notePageFavicon(image?.uri ?? null, consent), () => notePageFavicon(null, consent));
+    pending = handle.downloadFavicon(src).then((image) => notePageFavicon(image?.uri ?? null, consent), (error) => notePageFaviconFailed(error, consent));
     inflight.set(id, pending);
     void pending.finally(() => inflight.delete(id));
   }
