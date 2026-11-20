@@ -143,7 +143,8 @@ export function noteFavicon(tabId: string, src: string) {
   const id = `${key}|${src}`;
   let pending = inflight.get(id);
   if (!pending) {
-    pending = handle.downloadFavicon(src).then((image) => notePageFavicon(image?.uri ?? null), () => notePageFavicon(null));
+    const consent = consentToken();
+    pending = handle.downloadFavicon(src).then((image) => notePageFavicon(image?.uri ?? null, consent), () => notePageFavicon(null, consent));
     inflight.set(id, pending);
     void pending.finally(() => inflight.delete(id));
   }
