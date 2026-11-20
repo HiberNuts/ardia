@@ -566,9 +566,10 @@ is plain Chromium.
   `downloadImage`, `requestPictureInPicture`, `takeControlPress`, `exitPictureInPicture`, `resolvePasswordPrompt`,
   `resolveAutofillPrompt`, `answerAutofillPrompt`, `executeExtensionAction`, `resolveDisplayMedia` (Chromium's own
   picker shows), `mediaCaptureSourceId` and `notificationAction`. A failed `tab.call` rejects with the engine's error,
-  as on the Mac, a reply of the wrong shape rejects with `ERR_BAD_REPLY`, and a closed page answers the empty answer.
-  A focus the page takes only once it shows logs `could not take focus` when the engine refuses it. `nativeTag` is null: a page is its own window, with no React
-  Native tag to hand keyboard focus to.
+  as on the Mac, an `evaluate` result, navigation list or cookie list of the wrong type rejects with `ERR_BAD_REPLY`,
+  and a closed page answers the empty answer. A focus the page takes only once it shows logs `could not take focus`
+  when the engine refuses it. `nativeTag` is null: a page is its own window, with no React Native tag to hand keyboard
+  focus to.
 - `tab.close` closes as the Mac's `TabBridge::CloseAfterUnloadHandlers` does: a page with `beforeunload` or `unload`
   handlers gets `beforeunload` with its prompt cancelled (no "Leave site?" is ever shown for a tab the app closed), then
   its unload handlers whatever it answered, each step with 2 seconds, and then the host deletes the tab
