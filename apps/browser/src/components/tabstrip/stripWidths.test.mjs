@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { hasVisibleMembers, heldWideTab, keyedWidths, layoutStrip, nameGrowth, namesStayTight, withRoomyNames, overflowIn, stripOverflow, stripTabWidths, underPressure, withOverflowCounts, withoutTabs } = await import("./stripGroups.ts");
-const { COMPACT_CHIP, GAP, GROUP_TITLE_MAX, GROUP_TITLE_TIGHT, MAX_CHIP, NEW_TAB_ROOM, SELECTED_MIN_CHIP, SELECTED_STEPS, SELECTED_TIGHT_CHIP, TITLED_CHIP } = await import("./tokens.ts");
+const { COMPACT_CHIP, GAP, GROUP_TITLE_MAX, GROUP_TITLE_TIGHT, MAX_CHIP, NEW_TAB_ROOM, SELECTED_MIN_CHIP, SELECTED_STEPS, SELECTED_TIGHT_CHIP, TITLE_MIN_CHIP, TITLED_CHIP } = await import("./tokens.ts");
 const { needingTitles } = await import("../../state/tabs/topStrip.ts");
 
 const tab = (id) => ({ kind: "tab", id, group: null });
@@ -95,23 +95,36 @@ test("a group counts the members the strip moved into the open tabs menu", () =>
 });
 
 function overflowOneByOne(entries, activeId, pageWidth, measured, wideId = activeId) {
-  const fits = (hidden, selectedMin) =>
-    layoutStrip(withoutTabs(entries, hidden), activeId, pageWidth, withOverflowCounts(measured, entries, hidden), null, undefined, wideId, selectedMin).tabsEnd + GAP + NEW_TAB_ROOM <= pageWidth + 0.5;
-  const roomy = SELECTED_STEPS.find((step) => fits(new Set(), step));
-  if (roomy !== undefined) return { hidden: new Set(), selectedMin: roomy };
+  const layout = (hidden, selectedMin, titledMin, compactMin) =>
+    layoutStrip(withoutTabs(entries, hidden), activeId, pageWidth, withOverflowCounts(measured, entries, hidden), null, undefined, wideId, selectedMin, titledMin, compactMin);
+  const fitsIn = (strip) => strip.tabsEnd + GAP + NEW_TAB_ROOM <= pageWidth + 0.5;
+  const fits = (hidden, selectedMin) => fitsIn(layout(hidden, selectedMin));
   const tight = SELECTED_STEPS.at(-1);
+  if (layout(new Set(), tight).compactShown) {
+    const readable = (selectedMin, titledMin) => fitsIn(layout(new Set(), selectedMin, titledMin, TITLE_MIN_CHIP));
+    const step = SELECTED_STEPS.find((s) => readable(s, TITLED_CHIP));
+    if (step !== undefined) return { hidden: new Set(), selectedMin: step, titledMin: TITLED_CHIP, compactMin: TITLE_MIN_CHIP };
+    if (readable(tight, TITLE_MIN_CHIP)) return { hidden: new Set(), selectedMin: tight, titledMin: TITLE_MIN_CHIP, compactMin: TITLE_MIN_CHIP };
+  }
+  const roomy = SELECTED_STEPS.find((step) => fits(new Set(), step));
+  if (roomy !== undefined) return { hidden: new Set(), selectedMin: roomy, titledMin: TITLED_CHIP, compactMin: COMPACT_CHIP };
   const shown = entries.flatMap((e) => (e.kind === "group" ? (e.collapsed ? [] : e.members) : [e]));
   const order = shown.flatMap((m) => (m.kind === "tab" ? [m.id] : m.tabIds));
   const anchor = Math.max(0, order.indexOf(wideId));
-  const candidates = shown
+  const sorted = shown
     .flatMap((m) => (m.kind === "tab" && m.id !== activeId && m.id !== wideId && measured.needsTitle(m.id) ? [m.id] : []))
     .sort((a, b) => Math.abs(order.indexOf(b) - anchor) - Math.abs(order.indexOf(a) - anchor) || order.indexOf(b) - order.indexOf(a));
+  const lastOfGroup = entries.flatMap((e) => {
+    if (e.kind !== "group" || e.collapsed || !e.members.every((m) => m.kind === "tab" && sorted.includes(m.id))) return [];
+    return [sorted.filter((id) => e.members.some((m) => m.id === id)).at(-1)];
+  });
+  const candidates = [...sorted.filter((id) => !lastOfGroup.includes(id)), ...sorted.filter((id) => lastOfGroup.includes(id))];
   const hidden = new Set();
   for (const id of candidates) {
     hidden.add(id);
     if (fits(hidden, tight)) break;
   }
-  return { hidden, selectedMin: tight };
+  return { hidden, selectedMin: tight, titledMin: TITLED_CHIP, compactMin: COMPACT_CHIP };
 }
 
 test("the overflow hides exactly what laying the strip out after each hidden tab would, across random strips", () => {
@@ -142,7 +155,7 @@ test("the overflow hides exactly what laying the strip out after each hidden tab
     const fast = stripOverflow(entries, activeId, pageWidth, measured, null);
     const slow = overflowOneByOne(entries, activeId, pageWidth, measured);
     if (process.env.OC_DUMP && run === 295) console.log(JSON.stringify({ entries, needs: [...needs], chips: [...chips], activeId, pageWidth, fast: [...fast.hidden], slow: [...slow.hidden] }));
-    assert.deepEqual([[...fast.hidden].sort(), fast.selectedMin], [[...slow.hidden].sort(), slow.selectedMin], `run ${run} at ${pageWidth} pt`);
+    assert.deepEqual([[...fast.hidden].sort(), fast.selectedMin, fast.titledMin, fast.compactMin], [[...slow.hidden].sort(), slow.selectedMin, slow.titledMin, slow.compactMin], `run ${run} at ${pageWidth} pt`);
   }
 });
 
@@ -252,4 +265,82 @@ test("with earlier tabs in the open tabs menu, closing the selected tab holds it
   assert.deepEqual(holding, { tabId: "f", atEnd: false });
   const held = layoutStrip(withoutTabs(closedE, fit.hidden), "f", 400, measured(needs), null, shown.widths, holding.tabId, fit.selectedMin);
   assert.equal(held.tabWidth("f"), shown.tabWidth("e"));
+});
+
+const FILMED_STRIP_INSETS = 183;
+const filmedPage = (windowWidth) => windowWidth - FILMED_STRIP_INSETS;
+const tripStrip = () => {
+  const own = (id, group = null) => ({ kind: "tab", id, group });
+  const entries = [own("t1"), own("t2"), own("t3"), { kind: "group", id: "trip", collapsed: false, members: ["g1", "g2", "g3", "g4", "g5"].map((id) => own(id, "trip")) }, own("t5"), own("t6")];
+  const favicons = { t1: "docpad", t2: "lexicon", t3: "crumbs", g1: "ferry", g2: "hostel", g3: "", g4: "", g5: "", t5: "", t6: "" };
+  return { entries, favicons };
+};
+const TRIP_CHIP = 76;
+const TRIP_NAME = 30;
+
+function stripAfter(entries, favicons, windowWidths, tight = { names: false }) {
+  let shown;
+  for (const windowWidth of windowWidths) {
+    const page = filmedPage(windowWidth);
+    const needs = new Set(needingTitles(Object.entries(favicons)));
+    for (let render = 0; render < 4; render++) {
+      const m = { groupChip: () => TRIP_CHIP + (tight.names ? 0 : nameGrowth(TRIP_NAME)), folderChip: () => undefined, needsTitle: (id) => needs.has(id) };
+      const fit = stripOverflow(entries, "t1", page, m, null);
+      tight.names = namesStayTight(tight.names, fit, () => stripOverflow(entries, "t1", page, withRoomyNames(m, () => TRIP_NAME), null));
+      const strip = layoutStrip(withoutTabs(entries, fit.hidden), "t1", page, withOverflowCounts(m, entries, fit.hidden), null, undefined, "t1", fit.selectedMin, fit.titledMin, fit.compactMin);
+      const ids = entries.flatMap((e) => (e.kind === "group" ? e.members.map((t) => t.id) : [e.id]));
+      shown = { page, fit, strip, needs, m, widths: Object.fromEntries(ids.map((id) => [id, fit.hidden.has(id) ? "menu" : strip.tabWidth(id)])) };
+    }
+  }
+  return shown;
+}
+
+test("the filmed strip at 1180 and 760 pt lays out the same whether the window opened at that width or was resized to it", () => {
+  const { entries, favicons } = tripStrip();
+  const noFavicons = Object.fromEntries(Object.keys(favicons).map((id) => [id, ""]));
+  const result = ({ fit, widths }) => ({ hidden: [...fit.hidden].sort(), selectedMin: fit.selectedMin, titledMin: fit.titledMin, compactMin: fit.compactMin, widths });
+  for (const icons of [favicons, noFavicons]) {
+    assert.deepEqual(result(stripAfter(entries, icons, [760])), result(stripAfter(entries, icons, [1180, 1100, 1000, 900, 800, 760])), "760 pt");
+    assert.deepEqual(result(stripAfter(entries, icons, [1180])), result(stripAfter(entries, icons, [760, 900, 1050, 1180])), "1180 pt");
+  }
+  const tight = { names: false };
+  stripAfter(entries, noFavicons, [760], tight);
+  assert.deepEqual(result(stripAfter(entries, favicons, [760], tight)), result(stripAfter(entries, favicons, [1180, 760])), "favicons arriving after the window opened narrow land where narrowing with them loaded does");
+  const narrow = stripAfter(entries, favicons, [760]);
+  assert.deepEqual(result(narrow).hidden, ["g4", "g5", "t5", "t6"]);
+  assert.equal(overflowIn(entries[3], narrow.fit.hidden), 2);
+});
+
+test("titled tabs in the filmed strip keep a readable width, and a tab shows only its icon only when every tab readable wouldn't fit", () => {
+  const { entries, favicons } = tripStrip();
+  for (let windowWidth = 700; windowWidth <= 1500; windowWidth += 10) {
+    const { page, fit, strip, needs, m, widths } = stripAfter(entries, favicons, [windowWidth]);
+    const shown = Object.entries(widths).filter(([, w]) => w !== "menu");
+    for (const [id, w] of shown) if (needs.has(id)) assert.ok(w >= TITLE_MIN_CHIP, `${id} at ${windowWidth} pt is ${w} pt`);
+    const iconOnly = shown.filter(([id, w]) => !needs.has(id) && id !== "t1" && w < TITLE_MIN_CHIP);
+    if (!iconOnly.length) continue;
+    const readable = { chip: TITLE_MIN_CHIP, titled: TITLE_MIN_CHIP, selected: SELECTED_STEPS.at(-1) };
+    const allReadable = layoutStrip(withoutTabs(entries, fit.hidden), "t1", page, withOverflowCounts(m, entries, fit.hidden), null, readable, "t1", fit.selectedMin, fit.titledMin);
+    assert.ok(allReadable.tabsEnd + GAP + NEW_TAB_ROOM > page + 0.5, `${iconOnly.map(([id]) => id)} show only an icon at ${windowWidth} pt though every tab fits at ${TITLE_MIN_CHIP} pt`);
+    assert.ok(strip.tabsEnd + GAP + NEW_TAB_ROOM <= page + 0.5);
+  }
+  const roomy = stripAfter(entries, favicons, [1280]).widths;
+  assert.ok(["t2", "t3", "g1", "g2"].every((id) => roomy[id] >= TITLE_MIN_CHIP), `at 1280 pt every favicon tab shows its title: ${JSON.stringify(roomy)}`);
+  const wide = stripAfter(entries, favicons, [1180]);
+  assert.equal(wide.fit.hidden.size, 0, "at 1180 pt every tab stays in the strip");
+});
+
+test("a group in the filmed strip keeps a tab showing while any tab outside it can still move into the menu", () => {
+  const { entries, favicons } = tripStrip();
+  const noFavicons = Object.fromEntries(Object.keys(favicons).map((id) => [id, ""]));
+  for (const icons of [favicons, noFavicons]) {
+    for (let windowWidth = 640; windowWidth <= 1180; windowWidth += 10) {
+      const { fit } = stripAfter(entries, icons, [windowWidth]);
+      const members = entries[3].members.map((t) => t.id);
+      if (members.every((id) => fit.hidden.has(id))) assert.ok(["t2", "t3", "t5", "t6"].every((id) => fit.hidden.has(id)), `the group emptied at ${windowWidth} pt with ${["t2", "t3", "t5", "t6"].filter((id) => !fit.hidden.has(id))} still in the strip`);
+    }
+  }
+  const lettersOnly = stripAfter(entries, noFavicons, [760]);
+  assert.ok(entries[3].members.some((t) => !lettersOnly.fit.hidden.has(t.id)), `at 760 pt before favicons load the group keeps a tab: ${JSON.stringify(lettersOnly.widths)}`);
+  assert.ok(Object.values(lettersOnly.widths).every((w) => w === "menu" || w >= TITLE_MIN_CHIP));
 });

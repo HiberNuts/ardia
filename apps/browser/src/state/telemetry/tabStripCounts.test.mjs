@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { noteTabLayoutSwitch } from "./tabLayoutCounts.ts";
 import {
   noteTabStripCompact,
+  noteTabStripReadable,
   noteTabStripEdgeScroll,
   noteTabStripGroupToggle,
   noteTabStripOverflow,
@@ -19,6 +20,7 @@ const ZERO = {
   tab_strip_group_toggles: 0,
   pinned_rows_made_text_only: 0,
   tab_strip_compact_layouts: 0,
+  tab_strip_readable_layouts: 0,
   tab_strip_edge_scroll_drags: 0,
   tab_strip_reveals_after_press: 0,
   tab_strip_most_tabs: 0,
@@ -43,13 +45,14 @@ test("group collapses and expands from the strip are counted, and taking them st
 
 test("compact layouts, edge-scrolled drags and reveals held for a press are counted, and the most tabs is a maximum, not a sum", () => {
   noteTabStripCompact();
+  noteTabStripReadable();
   noteTabStripEdgeScroll();
   noteTabStripEdgeScroll();
   noteTabStripRevealAfterPress();
   noteTabStripOverflow(40);
   noteTabStripOverflow(120);
   noteTabStripOverflow(60);
-  assert.deepEqual(takeTabStripCounts(), { ...ZERO, tab_strip_compact_layouts: 1, tab_strip_edge_scroll_drags: 2, tab_strip_reveals_after_press: 1, tab_strip_most_tabs: 120 });
+  assert.deepEqual(takeTabStripCounts(), { ...ZERO, tab_strip_compact_layouts: 1, tab_strip_readable_layouts: 1, tab_strip_edge_scroll_drags: 2, tab_strip_reveals_after_press: 1, tab_strip_most_tabs: 120 });
   assert.deepEqual(takeTabStripCounts(), ZERO);
 });
 

@@ -6,6 +6,7 @@ import { modifiersOf, type ClickModifiers } from "../../lib/keys";
 import { useToolbarRowContext } from "./toolbarRowContext";
 import { useHover, useTooltip } from "./useHover";
 import { HoverFill } from "./HoverFill";
+import { TintedImage } from "./TintedImage";
 import { CloseButtonView, PillButtonView, PushButtonView, StepperButtonView } from "./ButtonKinds";
 import { useTheme } from "./theme";
 import { buttonMotion, usePressMotion, usePressScaleMotion } from "./motion";
@@ -130,7 +131,7 @@ function IconButtonView(props: IconProps) {
   const ink = color ?? (disabled ? (palette ? palette.iconDisabled : theme.iconDisabled) : palette ? palette.icon : theme.icon);
   const face = children ?? (asset ? (
     <View pointerEvents="none">
-      <Image source={asset} style={{ width: metrics.glyph, height: metrics.glyph, tintColor: ink }} />
+      <TintedImage source={asset} tint={ink} style={{ width: metrics.glyph, height: metrics.glyph }} />
     </View>
   ) : image ? (
     <View pointerEvents="none">
