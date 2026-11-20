@@ -33,8 +33,8 @@ function timed<T>(run: () => T, done: (result: Awaited<T>, ms: number) => void):
   return result;
 }
 
-export const noteSyncHistoryTitleKept = (consent: ConsentToken | null) =>
-  countFor(consent, () => void (isSharing() && syncPending.historyTitlesKept++), { sync_history_titles_kept: 1 });
+export const noteSyncHistoryTitlesKept = (kept: number, consent: ConsentToken | null) =>
+  countFor(consent, () => void (isSharing() && (syncPending.historyTitlesKept += kept)), { sync_history_titles_kept: kept });
 
 export function withSyncWorkCounts(kind: SyncWorkKind, adapter: Adapter): Adapter {
   return {

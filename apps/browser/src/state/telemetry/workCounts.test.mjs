@@ -58,13 +58,13 @@ test("the sync wrapper passes results through and counts passes, records and asy
 test("a page title Sync left as this device had it is counted while sharing is on, and never after sharing went off", async () => {
   client.setSharing(true, "onboarding");
   takeSyncWorkCounts();
-  work.noteSyncHistoryTitleKept(client.consentToken());
-  work.noteSyncHistoryTitleKept(client.consentToken());
-  assert.equal(takeSyncWorkCounts().sync_history_titles_kept, 2);
+  work.noteSyncHistoryTitlesKept(2, client.consentToken());
+  work.noteSyncHistoryTitlesKept(1, client.consentToken());
+  assert.equal(takeSyncWorkCounts().sync_history_titles_kept, 3);
   const before = client.consentToken();
   client.setSharing(false, "settings");
-  work.noteSyncHistoryTitleKept(before);
-  work.noteSyncHistoryTitleKept(client.consentToken());
+  work.noteSyncHistoryTitlesKept(1, before);
+  work.noteSyncHistoryTitlesKept(1, client.consentToken());
   assert.equal(takeSyncWorkCounts().sync_history_titles_kept, 0);
 });
 
