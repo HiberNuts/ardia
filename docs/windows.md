@@ -559,14 +559,15 @@ is plain Chromium.
   the topic `tab` with a key, a name and data (navigation, progress, favicon, find, zoom, security, media, pagePress,
   windowClose and more), and `tab.opened` for a tab Chromium made itself, with who opened it.
 - The page view (`engine/EngineWebView.tsx`) is the native view under the shared `WebView`, so its handle is typed as
-  `WebViewNativeHandle` from `@ardia/ardiacore`, the calls the shared `WebView` makes on the Mac's view: a method the
-  Mac's view gains and Windows lacks fails `pnpm -C packages/expo-windows typecheck`. Each method goes to `tab.call`
+  `WebViewNativeHandle` from `@ardia/ardiacore`, the calls the shared `WebView` makes on the Mac's view: a method
+  added to that contract that Windows lacks fails `pnpm -C packages/expo-windows typecheck`. Each method goes to `tab.call`
   (`engine/pageCalls.ts`), is answered in TypeScript (`capturePicture`, `downloadFavicon`, `focusIfUnfocused`), or is
   in `NOT_ON_WINDOWS_YET`, which answers the Mac's empty answer and logs the method once. Those need the engine:
   `downloadImage`, `requestPictureInPicture`, `takeControlPress`, `exitPictureInPicture`, `resolvePasswordPrompt`,
   `resolveAutofillPrompt`, `answerAutofillPrompt`, `executeExtensionAction`, `resolveDisplayMedia` (Chromium's own
   picker shows), `mediaCaptureSourceId` and `notificationAction`. A failed `tab.call` rejects with the engine's error,
-  as on the Mac; a closed page answers the empty answer. `nativeTag` is null: a page is its own window, with no React
+  as on the Mac, a reply of the wrong shape rejects with `ERR_BAD_REPLY`, and a closed page answers the empty answer.
+  A focus the page takes only once it shows logs `could not take focus` when the engine refuses it. `nativeTag` is null: a page is its own window, with no React
   Native tag to hand keyboard focus to.
 - `tab.close` closes as the Mac's `TabBridge::CloseAfterUnloadHandlers` does: a page with `beforeunload` or `unload`
   handlers gets `beforeunload` with its prompt cancelled (no "Leave site?" is ever shown for a tab the app closed), then

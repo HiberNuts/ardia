@@ -245,7 +245,11 @@ function askShow(page: Page, args: ShowArgs) {
       const focusArgs = page.focusArgs;
       if (fieldFocusedIn(page.windowId, page.key)) return sent;
       return Promise.resolve(sent).then(() =>
-        page.closed || lastAskedToFocus !== page || fieldFocusedIn(page.windowId, page.key) ? undefined : hostCall("tab.call", { ...focusArgs, key: page.key, method: "focus", deferred: true }),
+        page.closed || lastAskedToFocus !== page || fieldFocusedIn(page.windowId, page.key)
+          ? undefined
+          : hostCall("tab.call", { ...focusArgs, key: page.key, method: "focus", deferred: true }).catch((error: unknown) => {
+              throw (console.warn(`[ardia windows] the page ${page.key} could not take focus: ${String((error as Error)?.message ?? error)}`), error);
+            }),
       );
     }),
   );

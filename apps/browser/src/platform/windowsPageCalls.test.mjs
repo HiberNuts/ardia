@@ -74,12 +74,20 @@ test("a failed engine call rejects with the engine's error, through the Windows 
 test("the shared page view reaches the Windows calls with the engine's address", async () => {
   const { call, received } = host({ evaluate: { result: "true" } });
   const shared = webViewHandle({ current: { ...enginePageCalls(call, "page-e"), nativeTag: null } });
-  await shared.loadUrl("https://example.com/", { userInitiated: true });
+  await shared.loadUrl("ardia://settings", { userInitiated: true });
   assert.equal(await shared.evaluate("1"), true);
   assert.deepEqual(received, [
-    ["page-e", "loadUrl", { url: "https://example.com/", userInitiated: true }],
+    ["page-e", "loadUrl", { url: "chrome://settings", userInitiated: true }],
     ["page-e", "evaluate", { code: "1" }],
   ]);
+});
+
+test("an engine reply of the wrong shape rejects as a bad reply instead of reading as an empty answer", async () => {
+  const page = enginePageCalls(host({ evaluate: { result: { title: "A" } }, navigationEntries: { entries: { url: "x" } }, pageCookies: { cookies: "n=v" } }).call, "page-f");
+  await assert.rejects(page.evaluate("1"), { code: "ERR_BAD_REPLY" });
+  await assert.rejects(page.navigationEntries(), { code: "ERR_BAD_REPLY" });
+  await assert.rejects(page.pageCookies([]), { code: "ERR_BAD_REPLY" });
+  await assert.rejects(webViewHandle({ current: { ...page, nativeTag: null } }).evaluate("1"), { name: "ArdiaError", code: "ERR_BAD_REPLY" });
 });
 
 test("the shared page view's tag is the one the native view recorded, and none on Windows or before the view mounts", () => {

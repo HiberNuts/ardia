@@ -1,5 +1,6 @@
 import type { DiscardOutcome, DiscardRefusal, NavigationEntry, PageCookie, SecurityInfo, WebViewNativeHandle } from "@ardia/ardiacore";
 import { noteMissing } from "../missing";
+import { EngineError } from "./host";
 
 export type PageCall = <Result = unknown>(key: string, method: string, args: Record<string, unknown>) => Promise<Result | null>;
 
@@ -29,6 +30,20 @@ export const NOT_ON_WINDOWS_YET = {
   notificationAction: answeredWithoutWindows("notificationAction", undefined),
 } satisfies Partial<EnginePageView>;
 
+const badReply = (method: string, field: string) => Object.assign(new EngineError(`the engine's ${method} answered a ${field} of the wrong type`), { code: "ERR_BAD_REPLY" });
+
+function textOrNull(method: string, field: string, value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") throw badReply(method, field);
+  return value;
+}
+
+function listOr<Item>(method: string, field: string, value: unknown, absent: Item[]): Item[] {
+  if (value == null) return absent;
+  if (!Array.isArray(value)) throw badReply(method, field);
+  return value as Item[];
+}
+
 const withNulls = (args: Record<string, unknown>) => Object.fromEntries(Object.entries(args).map(([name, value]) => [name, value ?? null]));
 
 export function enginePageCalls(call: PageCall, key: string): EnginePageCalls {
@@ -48,14 +63,8 @@ export function enginePageCalls(call: PageCall, key: string): EnginePageCalls {
     stopFinding: (clear) => run("stopFinding", { clear }),
     zoomStep: (direction) => run("zoomStep", { direction }),
     executeJavaScript: (code) => run("executeJavaScript", { code }),
-    evaluate: async (code) => {
-      const result = (await ask("evaluate", { code }))?.result;
-      return typeof result === "string" ? result : null;
-    },
-    navigationEntries: async () => {
-      const entries = (await ask("navigationEntries"))?.entries;
-      return Array.isArray(entries) ? (entries as NavigationEntry[]) : [];
-    },
+    evaluate: async (code) => textOrNull("evaluate", "result", (await ask("evaluate", { code }))?.result),
+    navigationEntries: async () => listOr<NavigationEntry>("navigationEntries", "entries", (await ask("navigationEntries"))?.entries, []),
     showDevTools: (panel) => run("showDevTools", { panel }),
     print: () => run("print"),
     runPageCommand: (name) => run("runPageCommand", { name }),
@@ -65,10 +74,7 @@ export function enginePageCalls(call: PageCall, key: string): EnginePageCalls {
     },
     mediaCommand: (action, seconds) => run("mediaCommand", { action, seconds }),
     clearSiteData: async () => ((await ask("clearSiteData")) as { cookies: number | false; storage: boolean } | null) ?? { cookies: false, storage: false },
-    pageCookies: async (urls) => {
-      const cookies = (await ask("pageCookies", { urls }))?.cookies;
-      return Array.isArray(cookies) ? (cookies as PageCookie[]) : [];
-    },
+    pageCookies: async (urls) => listOr<PageCookie>("pageCookies", "cookies", (await ask("pageCookies", { urls }))?.cookies, []),
     openBlockedPopup: (id, always) => run("openBlockedPopup", { id, always }),
     discard: async (unload) => ((await ask("discard", { unload }))?.outcome as DiscardOutcome | undefined) ?? "refused",
     sleepIfHidden: async (seconds) => {
