@@ -14,14 +14,14 @@ import {
 } from "../../platform/importModule";
 import { passwordImportTally } from "../telemetry/passwordSaves";
 import { withPresetChosen } from "../../lib/presetLook";
-import { noteHistoryImport } from "../telemetry/importRuns";
+import { noteDuplicateBookmarks, noteHistoryImport, noteUntitledBookmarks } from "../telemetry/importRuns";
 import { reloadEngineHistory } from "../history/engineSync";
 import type { ConsentToken } from "../telemetry/choice";
 import { bookmarkRoots, type BookmarkDraft } from "../bookmarks/bookmarks";
 import { useBrowser } from "../browser/store";
 import { engineProfile, isIncognitoProfile } from "../browser/model";
 import { openPages, pageKey } from "../tabs/pageKeys";
-import type { ProfileColor } from "../browser/types";
+import type { BookmarkNode, ProfileColor } from "../browser/types";
 import { DEFAULT_PROFILE } from "../profiles/profiles";
 import { focusedWindowOf } from "../windows/ui";
 import { originOfLogin } from "../site/savedPasswords";
@@ -46,7 +46,19 @@ const linkCount = (nodes: ImportedNode[], counts: (link: ImportedNode) => boolea
 
 export const untitledLinks = (root: ImportedNode | undefined): number => linkCount(root?.children ?? [], (link) => link.title === "");
 
-export function importBookmarks(profileId: string, root: ImportedNode | undefined, browserName: string): number {
+type Placed = Record<string, BookmarkNode>;
+
+const childrenIn = (nodes: Placed, id: string): BookmarkNode[] => {
+  const n = nodes[id];
+  return n?.kind === "folder" ? n.children.map((c) => nodes[c]).filter((c): c is BookmarkNode => !!c) : [];
+};
+
+const alreadyPlaced = (n: ImportedNode, there: BookmarkNode[], nodes: Placed): boolean =>
+  n.type === "url"
+    ? !!n.url && there.some((b) => b.kind === "url" && b.url === n.url)
+    : there.some((b) => b.kind === "folder" && b.title === n.title && (n.children ?? []).every((c) => alreadyPlaced(c, childrenIn(nodes, b.id), nodes)));
+
+export function importBookmarks(profileId: string, root: ImportedNode | undefined, browserName: string, consent?: ConsentToken | null): number {
   if (!root?.children?.length) return 0;
   if (!bookmarkRoots(useBrowser.getState(), profileId)) useBrowser.getState().addBookmarkTree(profileId, []);
   const roots = bookmarkRoots(useBrowser.getState(), profileId)!;
@@ -54,16 +66,24 @@ export function importBookmarks(profileId: string, root: ImportedNode | undefine
   const rest = root.children.filter((c) => c.role !== "toolbar");
   const other = rest.flatMap((c) => (c.type === "folder" && (c.role === "other" || c.role === "list") ? (c.children ?? []) : [c]));
   const title = `Imported from ${browserName}`;
-  const place = (nodes: ImportedNode[], parentId: string) => {
-    if (!nodes.length) return;
-    const parent = useBrowser.getState().bookmarks.nodes[parentId];
+  let duplicates = 0;
+  const place = (nodes: ImportedNode[], parentId: string): ImportedNode[] => {
+    const placed = useBrowser.getState().bookmarks.nodes;
+    const here = childrenIn(placed, parentId);
+    const there = [...here, ...here.flatMap((b) => (b.kind === "folder" && b.title === title ? childrenIn(placed, b.id) : []))];
+    const fresh = nodes.filter((n) => !alreadyPlaced(n, there, placed));
+    duplicates += linkCount(nodes) - linkCount(fresh);
+    if (!fresh.length) return fresh;
+    const parent = placed[parentId];
     const empty = parent?.kind === "folder" && parent.children.length === 0;
-    const drafts = nodes.map(toDraft);
+    const drafts = fresh.map(toDraft);
     useBrowser.getState().addBookmarkTree(profileId, empty ? drafts : [{ title, children: drafts }], parentId);
+    return fresh;
   };
-  place(toolbar, roots.bar);
-  place(other, roots.other);
-  return linkCount([...toolbar, ...other]);
+  const added = [...place(toolbar, roots.bar), ...place(other, roots.other)];
+  noteDuplicateBookmarks(duplicates, consent);
+  noteUntitledBookmarks(untitledLinks({ ...root, children: added }), consent);
+  return linkCount(added);
 }
 
 export async function importHistory(
@@ -148,7 +168,7 @@ export async function applyResult(
   const toolbar = (result.bookmarks?.children ?? []).filter((c) => c.role === "toolbar");
   importFavicons(profileId, result.favicons, [...result.favorites.map((t) => t.url), ...(result.spaces.length ? [] : result.tabs.map((t) => t.url)), ...linksOf(toolbar)]);
   const counts = emptyCounts();
-  counts.bookmarks += importBookmarks(profileId, result.bookmarks, browserName);
+  counts.bookmarks += importBookmarks(profileId, result.bookmarks, browserName, consent);
   if (result.history.length) counts.history += await importHistory(profileId, result.history, onFailed, consent);
   const native = (["cookies", "autofill"] as const).filter((k) => requested.includes(k));
   Object.assign(counts, await importNative(profileId, result.vaultToken, native, onFailed));
@@ -160,7 +180,7 @@ export async function applyResult(
 
 export async function applySafari(profileId: string, data: SafariExport, cookies = true, onFailed?: (kind: ImportKind) => void, consent?: ConsentToken | null): Promise<ImportCounts> {
   const counts = emptyCounts();
-  counts.bookmarks = importBookmarks(profileId, data.bookmarks, "Safari");
+  counts.bookmarks = importBookmarks(profileId, data.bookmarks, "Safari", consent);
   const history = data.profiles.find((p) => !p.name)?.history ?? data.profiles[0]?.history ?? [];
   counts.history = await importHistory(profileId, history, onFailed, consent);
   Object.assign(counts, await importNative(profileId, data.vaultToken, cookies ? ["cookies", "autofill"] : ["autofill"], onFailed));

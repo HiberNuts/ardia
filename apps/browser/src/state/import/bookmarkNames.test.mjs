@@ -11,6 +11,7 @@ const { useBrowser } = await import("../browser/store.ts");
 const { importBookmarks, untitledLinks } = await import("./apply.ts");
 const { bookmarkRoots } = await import("../bookmarks/bookmarks.ts");
 const { noteUntitledBookmarks, takeImportRuns } = await import("../telemetry/importRuns.ts");
+const consentNow = () => client.consentToken();
 const { menuState } = await import("../commands/menuState.ts");
 
 const S = () => useBrowser.getState();
@@ -80,4 +81,26 @@ test("a reader that sends no name at all still gets the URL as the name, and isn
   assert.equal(importBookmarks("second", nameless, "Safari"), 1);
   assert.equal(untitledLinks(nameless), 0);
   assert.deepEqual(tree(bookmarkRoots(S(), "second").bar)[1], [["https://untitled.example/", "https://untitled.example/"]]);
+});
+
+test("bookmarks a re-import leaves out because they're already there are counted once per import, only while sharing is on (#3392)", () => {
+  S().hydrate({});
+  useBrowser.setState({ bookmarks: { nodes: {} } });
+  importBookmarks(P, root, "HTML File", consentNow());
+  takeImportRuns();
+  importBookmarks(P, root, "HTML File", consentNow());
+  assert.equal(takeImportRuns().import_duplicate_bookmarks, 5, "all five of the file's links were already there");
+  client.setSharing(false, "settings");
+  importBookmarks(P, root, "HTML File", consentNow());
+  client.setSharing(true, "settings");
+  assert.equal(takeImportRuns().import_duplicate_bookmarks, 0, "a re-import with sharing off is never counted");
+});
+
+test("a re-import counts as untitled only the empty-named links it added", () => {
+  S().hydrate({});
+  useBrowser.setState({ bookmarks: { nodes: {} } });
+  importBookmarks(P, root, "HTML File", consentNow());
+  assert.equal(takeImportRuns().import_untitled_bookmarks, 3, "the first import adds all three");
+  importBookmarks(P, root, "HTML File", consentNow());
+  assert.equal(takeImportRuns().import_untitled_bookmarks, 0, "a re-import adds none of them");
 });

@@ -6,9 +6,9 @@ import { useBrowser } from "../browser/store";
 import { MAX_DRAFT_LINKS } from "../groups/draftGroups";
 import { createProfile } from "../profiles/actions";
 import { noteImportedSpaces } from "../telemetry/usage";
-import { noteDiaSidebar, noteDiaTabProfiles, noteFirefoxFavicons, noteImportCore, noteImportRun, noteUntitledBookmarks } from "../telemetry/importRuns";
+import { noteDiaSidebar, noteDiaTabProfiles, noteFirefoxFavicons, noteImportCore, noteImportRun } from "../telemetry/importRuns";
 import { consentToken, type ConsentToken } from "../telemetry/client";
-import { adoptSpaceIdentity, applyResult, emptyCounts, importFavorites, importDiaProfile, profileColorFor, profileNamed, untitledLinks } from "./apply";
+import { adoptSpaceIdentity, applyResult, emptyCounts, importFavorites, importDiaProfile, profileColorFor, profileNamed } from "./apply";
 import type { BrowserProfile, DiaTabsResult, ImportCounts, ImportedExtension, ImportKind, ImportedSearchEngine, ImportResult } from "./apply";
 import { diaProfilesFor, diaProfilesWithoutFolder } from "./diaTabs";
 import { importArcSpace, importDiaSpace } from "./sidebarTree";
@@ -337,7 +337,6 @@ async function runImportJob(wanted: ReadonlySet<ImportKind>, withoutKey: boolean
       profileDest = dest;
     }
     if (diaSource && sidebarKinds.length) noteDiaSidebar(diaOutcome, consent);
-    noteUntitledBookmarks(untitledLinks(result.bookmarks), consent);
     noteImportCore(result.importCore, consent);
     if (source.family === "firefox") noteFirefoxFavicons(result.favicons.length, consent);
     if (source.family === "chromium" || source.family === "arc") {

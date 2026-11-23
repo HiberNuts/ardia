@@ -96,3 +96,53 @@ const EXPORT = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
     </DL><p>
 </DL><p>
 `;
+
+const bar = () => S().bookmarks.nodes[bookmarkRoots(S(), P).bar].children.map(outline);
+const chromeFile = () =>
+  folder("Bookmarks", [
+    folder("Bookmarks bar", [link("Bar link", "https://bar.example/"), folder("Tools", [link("Tool", "https://tool.example/")])], "toolbar"),
+    folder("Work", [folder("Spec", [link("Spec doc", "https://spec.example/")]), link("Work home", "https://work.example/")]),
+    link("Loose link", "https://loose.example/"),
+  ]);
+
+test("importing the same bookmarks file again adds nothing that's already there (#3392)", () => {
+  fresh();
+  assert.equal(importBookmarks(P, chromeFile(), "HTML File"), 5);
+  const first = { bar: bar(), other: otherBookmarks() };
+  assert.equal(importBookmarks(P, chromeFile(), "HTML File"), 0);
+  assert.deepEqual({ bar: bar(), other: otherBookmarks() }, first);
+});
+
+test("a re-import after one that went into an Imported folder adds nothing either", () => {
+  fresh();
+  importBookmarks(P, folder("Bookmarks", [folder("Bar", [link("Mine", "https://mine.example/")], "toolbar"), link("Kept", "https://kept.example/")]), "HTML File");
+  importBookmarks(P, chromeFile(), "HTML File");
+  const first = { bar: bar(), other: otherBookmarks() };
+  assert.deepEqual(bar(), ["Mine", { "Imported from HTML File": ["Bar link", { Tools: ["Tool"] }] }]);
+  assert.equal(importBookmarks(P, chromeFile(), "HTML File"), 0);
+  assert.deepEqual({ bar: bar(), other: otherBookmarks() }, first);
+});
+
+test("a re-import adds only what's new, and a folder that only shares a name with one already there comes in whole", () => {
+  fresh();
+  importBookmarks(P, chromeFile(), "HTML File");
+  const changed = folder("Bookmarks", [
+    folder("Work", [link("Work home", "https://work.example/"), link("Roadmap", "https://roadmap.example/")]),
+    link("Loose link", "https://loose.example/"),
+    link("New link", "https://new.example/"),
+  ]);
+  assert.equal(importBookmarks(P, changed, "HTML File"), 3);
+  assert.deepEqual(otherBookmarks(), [
+    { Work: [{ Spec: ["Spec doc"] }, "Work home"] },
+    "Loose link",
+    { "Imported from HTML File": [{ Work: ["Work home", "Roadmap"] }, "New link"] },
+  ]);
+});
+
+test("a link with no address is never taken for one already there", () => {
+  fresh();
+  const nameOnly = (title) => ({ type: "url", title });
+  importBookmarks(P, folder("Bookmarks", [nameOnly("First")]), "HTML File");
+  assert.equal(importBookmarks(P, folder("Bookmarks", [nameOnly("Second")]), "HTML File"), 1);
+  assert.deepEqual(otherBookmarks(), ["First", { "Imported from HTML File": ["Second"] }]);
+});
